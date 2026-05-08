@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
@@ -16,6 +17,7 @@ func (s *Server) Init() {
 
 	for {
 		conn := s.Accept()
+		fmt.Printf("Connection establised with %v\n", conn.RemoteAddr())
 		go handleRequest(conn)
 	}
 }
@@ -41,29 +43,29 @@ func (s *Server) Accept() net.Conn {
 func handleRequest(conn net.Conn) {
 	defer conn.Close()
 
-	buff := make([]byte, 1024)
+	reader := bufio.NewReader(conn)
+	var headers []string
 
-	n, err := conn.Read(buff)
-	if err != nil {
-		fmt.Println("Error reading:", err.Error())
-		return
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading from connection: ", err.Error())
+			return
+		}
+		headers = append(headers, line)
+		if line == "\r\n" {
+			break
+		}
 	}
-	// fmt.Println("n:", n)
-	request := string(buff[:n])
-	fmt.Printf("Request:\n%s\n", request)
-	req_parts := strings.Split(request, "\r\n")
-	if len(req_parts) < 3 {
-		fmt.Println("Invalid request format for HTTP")
-		return
-	}
-	// fmt.Printf("Request parts: %q\n", req_parts)
-	// fmt.Println("len of req_parts:", len(req_parts))
 
-	req_line := req_parts[0]
-	path := strings.Split(req_line, " ")[1]
+	req_line := headers[0]
+	fmt.Printf("Request:\n%s\n", req_line)
+	parts := strings.Split(req_line, " ")
+	path := parts[1]
 
 	var response string
 	switch {
+
 	case path == "/":
 		response =
 			"HTTP/1.1 200 OK\r\n\r\n"
@@ -76,6 +78,23 @@ func handleRequest(conn net.Conn) {
 			"Content-Length: %d\r\n"+
 			"\r\n"+
 			"%s", len(echo), echo)
+
+	case path == "/user-agent":
+		var user_agent string
+		for i, v := range headers {
+			if i == 0 {
+				continue
+			}
+			if strings.Contains(v, "User-Agent:") {
+				user_agent = strings.TrimSpace(strings.Split(v, ":")[1])
+			}
+		}
+		response = fmt.Sprintf(
+			"HTTP/1.1 200 OK\r\n"+
+				"Content-Type: text/plain\r\n"+
+				"Content-Length: %d\r\n"+
+				"\r\n"+
+				"%s", len(user_agent), user_agent)
 
 	default:
 		response =
