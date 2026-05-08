@@ -45,7 +45,6 @@ func main() {
 
 	req_line := req_parts[0]
 	path := strings.Split(req_line, " ")[1]
-	echo := strings.Split(path, "/")[2]
 
 	var response string
 	switch {
@@ -54,6 +53,12 @@ func main() {
 			"HTTP/1.1 200 OK\r\n\r\n"
 
 	case strings.HasPrefix(path, "/echo"):
+		path_parts := strings.Split(path, "/")
+		if len(path_parts) != 3 {
+			response = "HTTP/1.1 400 Bad Request\r\n\r\n"
+			break
+		}
+		echo := path_parts[2]
 		response = fmt.Sprintf("HTTP/1.1 200 OK\r\n"+
 			"Content-Type: text/plain\r\n"+
 			"Content-Length: %d\r\n"+
