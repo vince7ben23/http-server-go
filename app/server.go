@@ -7,23 +7,39 @@ import (
 	"strings"
 )
 
-func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	// fmt.Println("Logs from your program will appear here!")
+type Server struct {
+	listener net.Listener
+}
 
-	// Uncomment this block to pass the first stage
+func (s *Server) Init() {
+	s.initListener()
 
+	for {
+		conn := s.Accept()
+		go handleRequest(conn)
+	}
+}
+
+func (s *Server) initListener() {
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
 		os.Exit(1)
 	}
+	s.listener = l
+}
 
-	conn, err := l.Accept()
+func (s *Server) Accept() net.Conn {
+	conn, err := s.listener.Accept()
 	if err != nil {
 		fmt.Println("Error accepting connection: ", err.Error())
 		os.Exit(1)
 	}
+	return conn
+}
+
+func handleRequest(conn net.Conn) {
+	defer conn.Close()
 
 	buff := make([]byte, 1024)
 
@@ -34,7 +50,7 @@ func main() {
 	}
 	// fmt.Println("n:", n)
 	request := string(buff[:n])
-	fmt.Println("Received:", request)
+	fmt.Printf("Request:\n%s\n", request)
 	req_parts := strings.Split(request, "\r\n")
 	if len(req_parts) < 3 {
 		fmt.Println("Invalid request format for HTTP")
@@ -66,7 +82,13 @@ func main() {
 			"HTTP/1.1 404 Not Found\r\n\r\n"
 	}
 
-	println("Response:", response)
+	fmt.Printf("Response:\n%s\n", response)
 
 	conn.Write([]byte(response))
+}
+
+func main() {
+	server := &Server{}
+	server.Init()
+
 }
