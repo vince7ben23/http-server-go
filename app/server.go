@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	// Uncomment this block to pass the first stage
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -33,12 +33,23 @@ func main() {
 		return
 	}
 	// fmt.Println("n:", n)
-	fmt.Println("Received:", string(buff[0:n]))
+	request := string(buff[:n])
+	fmt.Println("Received:", request)
+	req_line := strings.Split(request, "\r\n")[0]
+	path := strings.Split(req_line, " ")[1]
 
-	response := "HTTP/1.1 200 OK\r\n" +
-		// "Content-Length: 6\r\n" +
-		// "Content-Type: text/plain\r\n" +
-		"\r\n" +
-		""
+	var response string
+	if path == "/" {
+		response =
+			"HTTP/1.1 200 OK\r\n" +
+				"\r\n" +
+				""
+	} else {
+		response =
+			"HTTP/1.1 404 Not Found\r\n" +
+				"\r\n" +
+				""
+	}
+
 	conn.Write([]byte(response))
 }
