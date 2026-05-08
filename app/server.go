@@ -35,21 +35,37 @@ func main() {
 	// fmt.Println("n:", n)
 	request := string(buff[:n])
 	fmt.Println("Received:", request)
-	req_line := strings.Split(request, "\r\n")[0]
+	req_parts := strings.Split(request, "\r\n")
+	if len(req_parts) < 3 {
+		fmt.Println("Invalid request format for HTTP")
+		return
+	}
+	// fmt.Printf("Request parts: %q\n", req_parts)
+	// fmt.Println("len of req_parts:", len(req_parts))
+
+	req_line := req_parts[0]
 	path := strings.Split(req_line, " ")[1]
+	echo := strings.Split(path, "/")[2]
 
 	var response string
-	if path == "/" {
+	switch {
+	case path == "/":
 		response =
-			"HTTP/1.1 200 OK\r\n" +
-				"\r\n" +
-				""
-	} else {
+			"HTTP/1.1 200 OK\r\n\r\n"
+
+	case strings.HasPrefix(path, "/echo"):
+		response = fmt.Sprintf("HTTP/1.1 200 OK\r\n"+
+			"Content-Type: text/plain\r\n"+
+			"Content-Length: %d\r\n"+
+			"\r\n"+
+			"%s", len(echo), echo)
+
+	default:
 		response =
-			"HTTP/1.1 404 Not Found\r\n" +
-				"\r\n" +
-				""
+			"HTTP/1.1 404 Not Found\r\n\r\n"
 	}
+
+	println("Response:", response)
 
 	conn.Write([]byte(response))
 }
