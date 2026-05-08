@@ -8,8 +8,15 @@ import (
 	"strings"
 )
 
+type Request struct {
+	Method  string
+	Path    string
+	Headers map[string]string
+	Body    []byte
+}
+
 type Server struct {
-	listener net.Listener
+	Listener net.Listener
 }
 
 func (s *Server) Init() {
@@ -28,11 +35,11 @@ func (s *Server) initListener() {
 		fmt.Println("Failed to bind to port 4221")
 		os.Exit(1)
 	}
-	s.listener = l
+	s.Listener = l
 }
 
 func (s *Server) Accept() net.Conn {
-	conn, err := s.listener.Accept()
+	conn, err := s.Listener.Accept()
 	if err != nil {
 		fmt.Println("Error accepting connection: ", err.Error())
 		os.Exit(1)
@@ -40,70 +47,67 @@ func (s *Server) Accept() net.Conn {
 	return conn
 }
 
+func parseRequest(reader *bufio.Reader) (*Request, error) {
+	requestLine, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Fields(requestLine)
+	if len(parts) < 3 {
+		return nil, fmt.Errorf("invalid request line: %q", requestLine)
+	}
+
+	req := &Request{
+		Method:  parts[0],
+		Path:    parts[1],
+		Headers: make(map[string]string),
+	}
+
+	for {
+		header, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		if header == "\r\n" {
+			break
+		}
+		if kv := strings.SplitN(header, ":", 2); len(kv) == 2 {
+			req.Headers[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		}
+	}
+
+	return req, nil
+}
+
 func handleRequest(conn net.Conn) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
-	var headers []string
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("Error reading from connection: ", err.Error())
-			return
-		}
-		headers = append(headers, line)
-		if line == "\r\n" {
-			break
-		}
+	req, err := parseRequest(reader)
+	fmt.Printf("Request: \n%+v\n", req)
+	if err != nil {
+		fmt.Println("Error reading from connection: ", err.Error())
+		return
 	}
 
-	req_line := headers[0]
-	fmt.Printf("Request:\n%s\n", req_line)
-	parts := strings.Split(req_line, " ")
-	path := parts[1]
-
-	var response string
-	switch {
-
-	case path == "/":
-		response =
-			"HTTP/1.1 200 OK\r\n\r\n"
-
-	case strings.HasPrefix(path, "/echo/"):
-		path_parts := strings.Split(path, "/")
-		echo := path_parts[2]
-		response = fmt.Sprintf("HTTP/1.1 200 OK\r\n"+
-			"Content-Type: text/plain\r\n"+
-			"Content-Length: %d\r\n"+
-			"\r\n"+
-			"%s", len(echo), echo)
-
-	case path == "/user-agent":
-		var user_agent string
-		for i, v := range headers {
-			if i == 0 {
-				continue
-			}
-			if strings.Contains(v, "User-Agent:") {
-				user_agent = strings.TrimSpace(strings.Split(v, ":")[1])
-			}
-		}
-		response = fmt.Sprintf(
-			"HTTP/1.1 200 OK\r\n"+
-				"Content-Type: text/plain\r\n"+
-				"Content-Length: %d\r\n"+
-				"\r\n"+
-				"%s", len(user_agent), user_agent)
-
-	default:
-		response =
-			"HTTP/1.1 404 Not Found\r\n\r\n"
-	}
-
-	fmt.Printf("Response:\n%s\n", response)
-
+	response := generateResponse(req)
+	fmt.Printf("Response: \n%s\n", response)
 	conn.Write([]byte(response))
+}
+
+func generateResponse(req *Request) string {
+	switch {
+	case req.Path == "/":
+		return "HTTP/1.1 200 OK\r\n\r\n"
+	case strings.HasPrefix(req.Path, "/echo/"):
+		echo := strings.TrimPrefix(req.Path, "/echo/")
+		return fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(echo), echo)
+	case req.Path == "/user-agent":
+		ua := req.Headers["User-Agent"]
+		return fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(ua), ua)
+	default:
+		return "HTTP/1.1 404 Not Found\r\n\r\n"
+	}
 }
 
 func main() {
