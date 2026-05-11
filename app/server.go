@@ -25,7 +25,7 @@ func (s *Server) Init() {
 	for {
 		conn := s.Accept()
 		fmt.Printf("Connection establised with %v\n", conn.RemoteAddr())
-		handleRequest(conn)
+		go handleRequest(conn)
 	}
 }
 
