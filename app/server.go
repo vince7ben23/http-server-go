@@ -25,7 +25,7 @@ func (s *Server) Init() {
 	for {
 		conn := s.Accept()
 		fmt.Printf("Connection establised with %v\n", conn.RemoteAddr())
-		go handleRequest(conn)
+		handleRequest(conn)
 	}
 }
 
@@ -45,6 +45,22 @@ func (s *Server) Accept() net.Conn {
 		os.Exit(1)
 	}
 	return conn
+}
+
+func handleRequest(conn net.Conn) {
+	defer conn.Close()
+
+	reader := bufio.NewReader(conn)
+	req, err := parseRequest(reader)
+	if err != nil {
+		fmt.Println("Error reading from request: ", err.Error())
+		return
+	}
+	fmt.Printf("Request: \n%+v\n", req)
+
+	response := generateResponse(req)
+	fmt.Printf("Response: \n%s\n", response)
+	conn.Write([]byte(response))
 }
 
 func parseRequest(reader *bufio.Reader) (*Request, error) {
@@ -77,22 +93,6 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 	}
 
 	return req, nil
-}
-
-func handleRequest(conn net.Conn) {
-	defer conn.Close()
-
-	reader := bufio.NewReader(conn)
-	req, err := parseRequest(reader)
-	fmt.Printf("Request: \n%+v\n", req)
-	if err != nil {
-		fmt.Println("Error reading from connection: ", err.Error())
-		return
-	}
-
-	response := generateResponse(req)
-	fmt.Printf("Response: \n%s\n", response)
-	conn.Write([]byte(response))
 }
 
 func generateResponse(req *Request) string {
