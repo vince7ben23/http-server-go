@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -57,8 +58,9 @@ type Response struct {
 	Body    string
 }
 
+var statusText = map[int]string{200: "OK", 201: "Created", 404: "Not Found", 500: "Internal Server Error"}
+
 func (r *Response) String() string {
-	statusText := map[int]string{200: "OK", 404: "Not Found"}
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "HTTP/1.1 %d %s\r\n", r.Status, statusText[r.Status])
 	if r.Body != "" {
@@ -97,7 +99,7 @@ var routes = []Route{
 		},
 	},
 	{
-		Match: func(req *Request) bool { return strings.HasPrefix(req.Path, "/files/") },
+		Match: func(req *Request) bool { return req.Method == "GET" && strings.HasPrefix(req.Path, "/files/") },
 		Handler: func(req *Request) *Response {
 			filename := strings.TrimPrefix(req.Path, "/files/")
 			filepath := *dir + filename
@@ -107,6 +109,18 @@ var routes = []Route{
 			}
 			return &Response{Status: 200, Headers: map[string]string{"Content-Type": "application/octet-stream"}, Body: string(content)}
 
+		},
+	},
+	{
+		Match: func(req *Request) bool { return req.Method == "POST" && strings.HasPrefix(req.Path, "/files/") },
+		Handler: func(req *Request) *Response {
+			filename := strings.TrimPrefix(req.Path, "/files/")
+			filepath := *dir + filename
+			err := os.WriteFile(filepath, req.Body, 0644)
+			if err != nil {
+				return &Response{Status: 500, Headers: map[string]string{}}
+			}
+			return &Response{Status: 201, Headers: map[string]string{}}
 		},
 	},
 }
@@ -155,6 +169,22 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 			req.Headers[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
 		}
 	}
+
+	// Read body if Content-Length is specified
+	if cl, ok := req.Headers["Content-Length"]; ok {
+		n, err := strconv.Atoi(cl)
+		if err != nil {
+			return nil, fmt.Errorf("invalid Content-Length: %s", cl)
+		}
+		if n > 0 {
+			req.Body = make([]byte, n)
+			if _, err := io.ReadFull(reader, req.Body); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// fmt.Printf("Body: %s\n", string(req.Body))
 
 	return req, nil
 }
