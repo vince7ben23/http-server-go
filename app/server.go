@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"net"
 	"os"
 	"strings"
 )
+
+var dir = flag.String("directory", "/tmp/", "dir for file requests")
 
 type Request struct {
 	Method  string
@@ -105,12 +108,21 @@ func generateResponse(req *Request) string {
 	case req.Path == "/user-agent":
 		ua := req.Headers["User-Agent"]
 		return fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(ua), ua)
+	case strings.HasPrefix(req.Path, "/files/"):
+		filename := strings.TrimPrefix(req.Path, "/files/")
+		filepath := *dir + filename
+		content, err := os.ReadFile(filepath)
+		if err != nil {
+			return "HTTP/1.1 404 Not Found\r\n\r\n"
+		}
+		return fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(content), content)
 	default:
 		return "HTTP/1.1 404 Not Found\r\n\r\n"
 	}
 }
 
 func main() {
+	flag.Parse()
 	server := &Server{}
 	server.Init()
 
