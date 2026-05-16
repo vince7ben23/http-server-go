@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -48,6 +49,66 @@ func (s *Server) Accept() net.Conn {
 		os.Exit(1)
 	}
 	return conn
+}
+
+type Response struct {
+	Status  int
+	Headers map[string]string
+	Body    string
+}
+
+func (r *Response) String() string {
+	statusText := map[int]string{200: "OK", 404: "Not Found"}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "HTTP/1.1 %d %s\r\n", r.Status, statusText[r.Status])
+	if r.Body != "" {
+		r.Headers["Content-Length"] = strconv.Itoa(len(r.Body))
+	}
+	for k, v := range r.Headers {
+		fmt.Fprintf(&sb, "%s: %s\r\n", k, v)
+	}
+	sb.WriteString("\r\n")
+	sb.WriteString(r.Body)
+	return sb.String()
+}
+
+type Route struct {
+	Match   func(req *Request) bool
+	Handler func(req *Request) *Response
+}
+
+var routes = []Route{
+	{
+		Match:   func(req *Request) bool { return req.Path == "/" },
+		Handler: func(req *Request) *Response { return &Response{Status: 200, Headers: map[string]string{}} },
+	},
+	{
+		Match: func(req *Request) bool { return strings.HasPrefix(req.Path, "/echo/") },
+		Handler: func(req *Request) *Response {
+			body := strings.TrimPrefix(req.Path, "/echo/")
+			return &Response{Status: 200, Headers: map[string]string{"Content-Type": "text/plain"}, Body: body}
+		},
+	},
+	{
+		Match: func(req *Request) bool { return req.Path == "/user-agent" },
+		Handler: func(req *Request) *Response {
+			ua := req.Headers["User-Agent"]
+			return &Response{Status: 200, Headers: map[string]string{"Content-Type": "text/plain"}, Body: ua}
+		},
+	},
+	{
+		Match: func(req *Request) bool { return strings.HasPrefix(req.Path, "/files/") },
+		Handler: func(req *Request) *Response {
+			filename := strings.TrimPrefix(req.Path, "/files/")
+			filepath := *dir + filename
+			content, err := os.ReadFile(filepath)
+			if err != nil {
+				return &Response{Status: 404, Headers: map[string]string{}}
+			}
+			return &Response{Status: 200, Headers: map[string]string{"Content-Type": "application/octet-stream"}, Body: string(content)}
+
+		},
+	},
 }
 
 func handleRequest(conn net.Conn) {
@@ -99,26 +160,12 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 }
 
 func generateResponse(req *Request) string {
-	switch {
-	case req.Path == "/":
-		return "HTTP/1.1 200 OK\r\n\r\n"
-	case strings.HasPrefix(req.Path, "/echo/"):
-		echo := strings.TrimPrefix(req.Path, "/echo/")
-		return fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(echo), echo)
-	case req.Path == "/user-agent":
-		ua := req.Headers["User-Agent"]
-		return fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(ua), ua)
-	case strings.HasPrefix(req.Path, "/files/"):
-		filename := strings.TrimPrefix(req.Path, "/files/")
-		filepath := *dir + filename
-		content, err := os.ReadFile(filepath)
-		if err != nil {
-			return "HTTP/1.1 404 Not Found\r\n\r\n"
+	for _, route := range routes {
+		if route.Match(req) {
+			return route.Handler(req).String()
 		}
-		return fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(content), content)
-	default:
-		return "HTTP/1.1 404 Not Found\r\n\r\n"
 	}
+	return (&Response{Status: 404, Headers: map[string]string{}}).String()
 }
 
 func main() {
