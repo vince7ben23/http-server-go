@@ -68,9 +68,7 @@ var statusText = map[int]string{200: "OK", 201: "Created", 404: "Not Found", 500
 func (r *Response) String() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "HTTP/1.1 %d %s\r\n", r.Status, statusText[r.Status])
-	if r.Body != "" {
-		r.Headers["Content-Length"] = strconv.Itoa(len(r.Body))
-	}
+	r.Headers["Content-Length"] = strconv.Itoa(len(r.Body))
 	for k, v := range r.Headers {
 		fmt.Fprintf(&sb, "%s: %s\r\n", k, v)
 	}
@@ -82,8 +80,6 @@ func (r *Response) String() string {
 func (r *Response) updateConnectionHeader(closeConn bool) {
 	if closeConn {
 		r.Headers["Connection"] = "close"
-	} else {
-		r.Headers["Connection"] = "keep-alive"
 	}
 }
 
@@ -232,5 +228,4 @@ func main() {
 	flag.Parse()
 	server := &Server{}
 	server.Init()
-
 }
