@@ -34,7 +34,7 @@ func (s *Server) Init() {
 
 	for {
 		conn := s.Accept()
-		fmt.Printf("Connection establised with %v\n", conn.RemoteAddr())
+		fmt.Printf("TCP Connection establised with %v\n", conn.RemoteAddr())
 		go handleRequest(conn)
 	}
 }
@@ -146,7 +146,7 @@ func handleRequest(conn net.Conn) {
 		req, err := parseRequest(reader)
 		if err != nil {
 			if err == io.EOF {
-				// fmt.Println("Client closed the connection via EOF.")
+				fmt.Println("Client closed the connection via EOF.")
 				// Client closed the connection, server receives EOF
 				return
 			}
