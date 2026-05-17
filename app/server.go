@@ -20,6 +20,10 @@ type Request struct {
 	Body    []byte
 }
 
+func (r *Request) isConnectClosed() bool {
+	return strings.EqualFold(r.Headers["Connection"], "close")
+}
+
 type Server struct {
 	Listener net.Listener
 }
@@ -72,6 +76,14 @@ func (r *Response) String() string {
 	sb.WriteString("\r\n")
 	sb.WriteString(r.Body)
 	return sb.String()
+}
+
+func (r *Response) updateConnectionHeader(closeConn bool) {
+	if closeConn {
+		r.Headers["Connection"] = "close"
+	} else {
+		r.Headers["Connection"] = "keep-alive"
+	}
 }
 
 type Route struct {
@@ -129,16 +141,30 @@ func handleRequest(conn net.Conn) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
-	req, err := parseRequest(reader)
-	if err != nil {
-		fmt.Println("Error reading from request: ", err.Error())
-		return
-	}
-	fmt.Printf("Request: \n%+v\n", req)
+	for {
+		req, err := parseRequest(reader)
+		if err != nil {
+			if err == io.EOF {
+				// Client closed the connection, server receives EOF
+				return
+			}
+			fmt.Println("Error reading from request: ", err.Error())
+			return
+		}
+		fmt.Printf("Request: \n%+v\n", req)
 
-	response := generateResponse(req)
-	fmt.Printf("Response: \n%s\n", response)
-	conn.Write([]byte(response))
+		response := generateResponseByRoute(req)
+		closeConn := req.isConnectClosed()
+		response.updateConnectionHeader(closeConn)
+
+		fmt.Printf("Response: \n%s\n", response)
+		conn.Write([]byte(response.String()))
+
+		if closeConn {
+			return
+		}
+	}
+
 }
 
 func parseRequest(reader *bufio.Reader) (*Request, error) {
@@ -189,13 +215,14 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 	return req, nil
 }
 
-func generateResponse(req *Request) string {
+func generateResponseByRoute(req *Request) *Response {
+
 	for _, route := range routes {
 		if route.Match(req) {
-			return route.Handler(req).String()
+			return route.Handler(req)
 		}
 	}
-	return (&Response{Status: 404, Headers: map[string]string{}}).String()
+	return (&Response{Status: 404, Headers: map[string]string{}})
 }
 
 func main() {
