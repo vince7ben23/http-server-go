@@ -16,6 +16,7 @@ var dir = flag.String("directory", "/tmp/", "dir for file requests")
 type Request struct {
 	Method  string
 	Path    string
+	Version string
 	Headers map[string]string
 	Body    []byte
 }
@@ -145,6 +146,7 @@ func handleRequest(conn net.Conn) {
 		req, err := parseRequest(reader)
 		if err != nil {
 			if err == io.EOF {
+				// fmt.Println("Client closed the connection via EOF.")
 				// Client closed the connection, server receives EOF
 				return
 			}
@@ -180,6 +182,7 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 	req := &Request{
 		Method:  parts[0],
 		Path:    parts[1],
+		Version: parts[2],
 		Headers: make(map[string]string),
 	}
 
