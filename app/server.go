@@ -25,6 +25,10 @@ func (r *Request) isConnectClosed() bool {
 	return strings.EqualFold(r.Headers["Connection"], "close")
 }
 
+func (r *Request) isAcceptEncoding() bool {
+	return strings.EqualFold(r.Headers["Accept-Encoding"], "gzip")
+}
+
 type Server struct {
 	Listener net.Listener
 }
@@ -80,6 +84,12 @@ func (r *Response) String() string {
 func (r *Response) updateConnectionHeader(closeConn bool) {
 	if closeConn {
 		r.Headers["Connection"] = "close"
+	}
+}
+
+func (r *Response) updateContentEncoding(isEncoded bool) {
+	if isEncoded {
+		r.Headers["Content-Encoding"] = "gzip"
 	}
 }
 
@@ -154,6 +164,8 @@ func handleRequest(conn net.Conn) {
 		response := generateResponseByRoute(req)
 		closeConn := req.isConnectClosed()
 		response.updateConnectionHeader(closeConn)
+		isEncoded := req.isAcceptEncoding()
+		response.updateContentEncoding(isEncoded)
 
 		fmt.Printf("Response: \n%s\n", response)
 		conn.Write([]byte(response.String()))
