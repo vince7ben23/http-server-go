@@ -26,7 +26,7 @@ func (r *Request) isConnectClosed() bool {
 }
 
 func (r *Request) isAcceptEncoding() bool {
-	return strings.EqualFold(r.Headers["Accept-Encoding"], "gzip")
+	return strings.Contains(r.Headers["Accept-Encoding"], "gzip")
 }
 
 type Server struct {
