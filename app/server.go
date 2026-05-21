@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"flag"
 	"fmt"
 	"io"
@@ -81,16 +83,29 @@ func (r *Response) String() string {
 	return sb.String()
 }
 
-func (r *Response) updateConnectionHeader(closeConn bool) {
-	if closeConn {
-		r.Headers["Connection"] = "close"
-	}
+func (r *Response) updateConnectionHeader() {
+	r.Headers["Connection"] = "close"
 }
 
-func (r *Response) updateContentEncoding(isEncoded bool) {
-	if isEncoded {
-		r.Headers["Content-Encoding"] = "gzip"
+func (r *Response) updateContentEncoding() {
+	r.Headers["Content-Encoding"] = "gzip"
+}
+
+func (r *Response) gzipBody() error {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte(r.Body))
+	if err != nil {
+		fmt.Println("Error gzipping body: ", err.Error())
+		return err
 	}
+	if err := gz.Close(); err != nil {
+		fmt.Println("Error closing gzip writer: ", err.Error())
+		return err
+	}
+	r.Body = buf.String()
+	return nil
+
 }
 
 type Route struct {
@@ -149,7 +164,7 @@ func handleRequest(conn net.Conn) {
 
 	reader := bufio.NewReader(conn)
 	for {
-		req, err := parseRequest(reader)
+		request, err := parseRequest(reader)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("Client closed the connection via EOF.")
@@ -159,13 +174,19 @@ func handleRequest(conn net.Conn) {
 			fmt.Println("Error reading from request: ", err.Error())
 			return
 		}
-		fmt.Printf("Request: \n%+v\n", req)
+		fmt.Printf("Request: \n%+v\n", request)
 
-		response := generateResponseByRoute(req)
-		closeConn := req.isConnectClosed()
-		response.updateConnectionHeader(closeConn)
-		isEncoded := req.isAcceptEncoding()
-		response.updateContentEncoding(isEncoded)
+		response := generateResponseByRoute(request)
+		closeConn := request.isConnectClosed()
+		if closeConn {
+			response.updateConnectionHeader()
+		}
+		if request.isAcceptEncoding() {
+			if err := response.gzipBody(); err != nil {
+				response = &Response{Status: 500, Headers: map[string]string{}}
+			}
+			response.updateContentEncoding()
+		}
 
 		fmt.Printf("Response: \n%s\n", response)
 		conn.Write([]byte(response.String()))

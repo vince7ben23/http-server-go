@@ -2,6 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,6 +128,120 @@ func TestRoutes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRequestHelpers(t *testing.T) {
+	t.Run("isConnectClosed true", func(t *testing.T) {
+		req := &Request{Headers: map[string]string{"Connection": "close"}}
+		if !req.isConnectClosed() {
+			t.Error("expected isConnectClosed() = true")
+		}
+	})
+
+	t.Run("isConnectClosed false when keep-alive", func(t *testing.T) {
+		req := &Request{Headers: map[string]string{"Connection": "keep-alive"}}
+		if req.isConnectClosed() {
+			t.Error("expected isConnectClosed() = false")
+		}
+	})
+
+	t.Run("isConnectClosed false when absent", func(t *testing.T) {
+		req := &Request{Headers: map[string]string{}}
+		if req.isConnectClosed() {
+			t.Error("expected isConnectClosed() = false when header absent")
+		}
+	})
+
+	t.Run("isConnectClosed case-insensitive", func(t *testing.T) {
+		req := &Request{Headers: map[string]string{"Connection": "Close"}}
+		if !req.isConnectClosed() {
+			t.Error("expected isConnectClosed() = true for 'Close'")
+		}
+	})
+
+	t.Run("isAcceptEncoding true for gzip", func(t *testing.T) {
+		req := &Request{Headers: map[string]string{"Accept-Encoding": "gzip"}}
+		if !req.isAcceptEncoding() {
+			t.Error("expected isAcceptEncoding() = true")
+		}
+	})
+
+	t.Run("isAcceptEncoding true for multiple schemes with gzip", func(t *testing.T) {
+		req := &Request{Headers: map[string]string{"Accept-Encoding": "deflate, gzip, br"}}
+		if !req.isAcceptEncoding() {
+			t.Error("expected isAcceptEncoding() = true for 'deflate, gzip, br'")
+		}
+	})
+
+	t.Run("isAcceptEncoding false when absent", func(t *testing.T) {
+		req := &Request{Headers: map[string]string{}}
+		if req.isAcceptEncoding() {
+			t.Error("expected isAcceptEncoding() = false when header absent")
+		}
+	})
+
+	t.Run("isAcceptEncoding false for deflate only", func(t *testing.T) {
+		req := &Request{Headers: map[string]string{"Accept-Encoding": "deflate"}}
+		if req.isAcceptEncoding() {
+			t.Error("expected isAcceptEncoding() = false for 'deflate'")
+		}
+	})
+}
+
+func TestResponseHelpers(t *testing.T) {
+	t.Run("updateConnectionHeader sets close", func(t *testing.T) {
+		resp := &Response{Status: 200, Headers: map[string]string{}}
+		resp.updateConnectionHeader()
+		if resp.Headers["Connection"] != "close" {
+			t.Errorf("Connection = %q, want %q", resp.Headers["Connection"], "close")
+		}
+	})
+
+	t.Run("updateContentEncoding sets gzip", func(t *testing.T) {
+		resp := &Response{Status: 200, Headers: map[string]string{}}
+		resp.updateContentEncoding()
+		if resp.Headers["Content-Encoding"] != "gzip" {
+			t.Errorf("Content-Encoding = %q, want %q", resp.Headers["Content-Encoding"], "gzip")
+		}
+	})
+
+	t.Run("gzipBody compresses body", func(t *testing.T) {
+		resp := &Response{Status: 200, Headers: map[string]string{}, Body: "hello"}
+		if err := resp.gzipBody(); err != nil {
+			t.Fatalf("gzipBody() error: %v", err)
+		}
+
+		gr, err := gzip.NewReader(bytes.NewReader([]byte(resp.Body)))
+		if err != nil {
+			t.Fatalf("gzip.NewReader error: %v", err)
+		}
+		decompressed, err := io.ReadAll(gr)
+		if err != nil {
+			t.Fatalf("ReadAll error: %v", err)
+		}
+		if string(decompressed) != "hello" {
+			t.Errorf("decompressed body = %q, want %q", string(decompressed), "hello")
+		}
+	})
+
+	t.Run("gzipBody on empty body", func(t *testing.T) {
+		resp := &Response{Status: 200, Headers: map[string]string{}, Body: ""}
+		if err := resp.gzipBody(); err != nil {
+			t.Fatalf("gzipBody() error: %v", err)
+		}
+
+		gr, err := gzip.NewReader(bytes.NewReader([]byte(resp.Body)))
+		if err != nil {
+			t.Fatalf("gzip.NewReader error: %v", err)
+		}
+		decompressed, err := io.ReadAll(gr)
+		if err != nil {
+			t.Fatalf("ReadAll error: %v", err)
+		}
+		if string(decompressed) != "" {
+			t.Errorf("decompressed body = %q, want empty", string(decompressed))
+		}
+	})
 }
 
 func TestFileRoutes(t *testing.T) {
